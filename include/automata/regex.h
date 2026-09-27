@@ -47,6 +47,8 @@ typedef enum {
 
 RegexResult regex_parse(Regex *regex, const char *source, RegexError *error);
 
+void regex_dump(const Regex *regex);
+
 void regex_free(Regex *regex);
 
 #endif
