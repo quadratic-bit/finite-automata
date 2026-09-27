@@ -1,3 +1,5 @@
+#include <automata/dot.h>
+#include <automata/nfa.h>
 #include <automata/regex.h>
 
 #include <stdio.h>
@@ -13,7 +15,25 @@ static int command_regex(const char *source) {
 		return 1;
 	}
 
-	regex_dump(&regex);
+	Nfa nfa = {0};
+
+	if (nfa_from_regex(&nfa, &regex) != NFA_OK) {
+		fprintf(stderr, "failed to construct NFA\n");
+		regex_free(&regex);
+
+		return 1;
+	}
+
+	if (nfa_write_dot(&nfa, stdout) != DOT_OK) {
+		fprintf(stderr, "failed to write DOT\n");
+
+		nfa_free(&nfa);
+		regex_free(&regex);
+
+		return 1;
+	}
+
+	nfa_free(&nfa);
 	regex_free(&regex);
 
 	return 0;
