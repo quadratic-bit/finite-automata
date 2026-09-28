@@ -121,3 +121,69 @@ DotResult nfa_write_dot(const Nfa *nfa, FILE *out) {
 
 	return DOT_OK;
 }
+
+DotResult dfa_write_dot(const Dfa *dfa, FILE *out) {
+	assert(dfa != NULL);
+	assert(out != NULL);
+
+	assert(dfa->state_count > 0);
+	assert(dfa->start < dfa->state_count);
+
+	if (fputs("digraph DFA {\n", out) == EOF) {
+		return DOT_ERR;
+	}
+
+	if (fputs("\trankdir=LR;\n\n", out) == EOF) {
+		return DOT_ERR;
+	}
+
+	if (fputs("\tstart [shape=point, label=\"\"];\n", out) == EOF) {
+		return DOT_ERR;
+	}
+
+	if (fprintf(out, "\tstart -> q%zu;\n\n", dfa->start) < 0) {
+		return DOT_ERR;
+	}
+
+	for (size_t state = 0; state < dfa->state_count; ++state) {
+		const char *shape = dfa->accepting[state] ? "doublecircle" : "circle";
+
+		if (fprintf(out, "\tq%zu [shape=%s];\n", state, shape) < 0) {
+			return DOT_ERR;
+		}
+	}
+
+	if (dfa->state_count > 0 && dfa->alphabet_count > 0 && fputc('\n', out) == EOF) {
+		return DOT_ERR;
+	}
+
+	for (StateId state = 0; state < dfa->state_count; ++state) {
+		for (size_t sym_index = 0; sym_index < dfa->alphabet_count; ++sym_index) {
+			StateId target = dfa->transitions[state * dfa->alphabet_count + sym_index];
+
+			assert(target < dfa->state_count);
+
+			if (fprintf(out, "\tq%zu -> q%zu [label=\"", state, target) < 0) {
+				return DOT_ERR;
+			}
+
+			if (write_symbol(out, dfa->alphabet[sym_index]) != DOT_OK) {
+				return DOT_ERR;
+			}
+
+			if (fputs("\"];\n", out) == EOF) {
+				return DOT_ERR;
+			}
+		}
+	}
+
+	if (fputs("}\n", out) == EOF) {
+		return DOT_ERR;
+	}
+
+	if (ferror(out)) {
+		return DOT_ERR;
+	}
+
+	return DOT_OK;
+}

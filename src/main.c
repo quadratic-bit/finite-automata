@@ -1,3 +1,4 @@
+#include <automata/dfa.h>
 #include <automata/dot.h>
 #include <automata/nfa.h>
 #include <automata/regex.h>
@@ -5,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int command_regex(const char *source) {
+static int command_regex(const char *source, int determinize) {
 	Regex      regex = {0};
 	RegexError error = {0};
 
@@ -24,31 +25,64 @@ static int command_regex(const char *source) {
 		return 1;
 	}
 
-	if (nfa_write_dot(&nfa, stdout) != DOT_OK) {
-		fprintf(stderr, "failed to write DOT\n");
+	regex_free(&regex);
+
+	if (!determinize) {
+		if (nfa_write_dot(&nfa, stdout) != DOT_OK) {
+			fprintf(stderr, "failed to write DOT\n");
+			nfa_free(&nfa);
+
+			return 1;
+		}
 
 		nfa_free(&nfa);
-		regex_free(&regex);
+		return 0;
+	}
+
+	Dfa dfa = {0};
+
+	if (dfa_from_nfa(&dfa, &nfa) != DFA_OK) {
+		fprintf(stderr, "failed to determinize NFA\n");
+		nfa_free(&nfa);
 
 		return 1;
 	}
 
 	nfa_free(&nfa);
-	regex_free(&regex);
 
+	if (dfa_write_dot(&dfa, stdout) != DOT_OK) {
+		fprintf(stderr, "failed to write DOT\n");
+		dfa_free(&dfa);
+
+		return 1;
+	}
+
+	dfa_free(&dfa);
 	return 0;
 }
 
 int main(int argc, char **argv) {
-	if (argc != 3) {
-		fprintf(stderr, "usage: %s regex <expression>\n", argv[0]);
+	if (argc < 3 || argc > 4) {
+		fprintf(stderr, "usage: %s regex <expression> [--dfa]\n", argv[0]);
+
 		return 1;
 	}
 
-	if (strcmp(argv[1], "regex") == 0) {
-		return command_regex(argv[2]);
+	if (strcmp(argv[1], "regex") != 0) {
+		fprintf(stderr, "unknown command: %s\n", argv[1]);
+		return 1;
 	}
 
-	fprintf(stderr, "unknown command: %s\n", argv[1]);
-	return 1;
+	int determinize = 0;
+
+	if (argc == 4) {
+		if (strcmp(argv[3], "--dfa") != 0) {
+			fprintf(stderr, "unknown option: %s\n", argv[3]);
+			return 1;
+		}
+
+		determinize = 1;
+	}
+
+	return command_regex(argv[2], determinize);
 }
