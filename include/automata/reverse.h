@@ -4,6 +4,7 @@
 #include <automata/dfa.h>
 #include <automata/nfa.h>
 
+NfaResult nfa_reverse    (Nfa *nfa, const Nfa *source);
 NfaResult nfa_reverse_dfa(Nfa *nfa, const Dfa *dfa);
 
 #endif

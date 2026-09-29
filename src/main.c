@@ -70,22 +70,31 @@ static int automaton_minimize(Automaton *automaton) {
 }
 
 static int automaton_reverse(Automaton *automaton) {
-	if (!automaton_determinize(automaton)) {
-		return 0;
-	}
-
 	Nfa reversed = {0};
 
-	if (nfa_reverse_dfa(&reversed, &automaton->as.dfa) != NFA_OK) {
-		return 0;
+	switch (automaton->kind) {
+	case AUTOMATON_NFA:
+		if (nfa_reverse(&reversed, &automaton->as.nfa) != NFA_OK) {
+			return 0;
+		}
+
+		nfa_free(&automaton->as.nfa);
+		automaton->as.nfa = reversed;
+		return 1;
+
+	case AUTOMATON_DFA:
+		if (nfa_reverse_dfa(&reversed, &automaton->as.dfa) != NFA_OK) {
+			return 0;
+		}
+
+		dfa_free(&automaton->as.dfa);
+
+		automaton->kind   = AUTOMATON_NFA;
+		automaton->as.nfa = reversed;
+		return 1;
 	}
 
-	dfa_free(&automaton->as.dfa);
-
-	automaton->kind   = AUTOMATON_NFA;
-	automaton->as.nfa = reversed;
-
-	return 1;
+	return 0;
 }
 
 static int automaton_complement(Automaton *automaton) {

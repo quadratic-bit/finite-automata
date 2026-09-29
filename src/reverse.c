@@ -101,3 +101,52 @@ NfaResult nfa_reverse_dfa(Nfa *nfa, const Dfa *dfa) {
 
 	return NFA_OK;
 }
+
+NfaResult nfa_reverse(Nfa *nfa, const Nfa *source) {
+	assert(nfa    != NULL);
+	assert(source != NULL);
+	assert(nfa    != source);
+
+	assert(source->state_count > 0);
+	assert(source->start  < source->state_count);
+	assert(source->accept < source->state_count);
+
+	assert(nfa->state_count      == 0);
+	assert(nfa->transitions      == NULL);
+	assert(nfa->transition_count == 0);
+
+	NfaTransition *transitions = NULL;
+
+	if (source->transition_count != 0) {
+		if (source->transition_count > SIZE_MAX / sizeof *transitions) {
+			return NFA_ERR;
+		}
+
+		transitions = malloc(source->transition_count * sizeof *transitions);
+
+		if (transitions == NULL) {
+			return NFA_ERR;
+		}
+	}
+
+	for (size_t i = 0; i < source->transition_count; ++i) {
+		const NfaTransition *old = &source->transitions[i];
+
+		transitions[i] = (NfaTransition){
+			.from   = old->to,
+			.to     = old->from,
+			.kind   = old->kind,
+			.symbol = old->symbol,
+		};
+	}
+
+	*nfa = (Nfa){
+		.state_count      = source->state_count,
+		.start            = source->accept,
+		.accept           = source->start,
+		.transitions      = transitions,
+		.transition_count = source->transition_count,
+	};
+
+	return NFA_OK;
+}
