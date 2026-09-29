@@ -1,145 +1,13 @@
 #include <automata/dfa.h>
 
+#include "dfa_builder.h"
 #include "stateset.h"
-#include "vec.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-static const size_t DEFAULT_BUILDER_CAP = 8;
-
-typedef struct {
-	const Dfa *source;
-
-	size_t word_count;
-
-	uint64_t      *subsets;
-	unsigned char *accepting;
-	StateId       *transitions;
-
-	size_t state_count;
-	size_t state_cap;
-} ReverseBuilder;
-
-static uint64_t *builder_subset(ReverseBuilder *builder, StateId state) {
-	assert(state < builder->state_count);
-
-	return &builder->subsets[state * builder->word_count];
-}
-
-static void builder_free(ReverseBuilder *builder) {
-	free(builder->subsets);
-	free(builder->accepting);
-	free(builder->transitions);
-
-	*builder = (ReverseBuilder){0};
-}
-
-static DfaResult builder_grow(ReverseBuilder *builder) {
-	size_t new_cap;
-
-	if (!vec_next_cap(builder->state_cap, DEFAULT_BUILDER_CAP, &new_cap)) {
-		return DFA_ERR;
-	}
-
-	if (builder->word_count != 0 && new_cap > SIZE_MAX / builder->word_count) {
-		return DFA_ERR;
-	}
-
-	size_t subset_words = new_cap * builder->word_count;
-	uint64_t *subsets = vec_realloc(builder->subsets, subset_words, sizeof *builder->subsets);
-
-	if (subsets == NULL) {
-		return DFA_ERR;
-	}
-
-	builder->subsets = subsets;
-
-	unsigned char *accepting = vec_realloc(
-		builder->accepting,
-		new_cap,
-		sizeof *builder->accepting
-	);
-
-	if (accepting == NULL) {
-		return DFA_ERR;
-	}
-
-	builder->accepting = accepting;
-
-	size_t alphabet_count = builder->source->alphabet_count;
-
-	if (alphabet_count != 0) {
-		if (new_cap > SIZE_MAX / alphabet_count) {
-			return DFA_ERR;
-		}
-
-		size_t transition_count = new_cap * alphabet_count;
-
-		StateId *transitions = vec_realloc(
-			builder->transitions,
-			transition_count,
-			sizeof *builder->transitions
-		);
-
-		if (transitions == NULL) {
-			return DFA_ERR;
-		}
-
-		builder->transitions = transitions;
-	}
-
-	builder->state_cap = new_cap;
-	return DFA_OK;
-}
-
-static DfaResult builder_intern(ReverseBuilder *builder, const StateSet *subset, StateId *state) {
-	for (size_t i = 0; i < builder->state_count; ++i) {
-		StateSet existing = {
-			.words      = builder_subset(builder, i),
-			.word_count = builder->word_count,
-		};
-
-		if (stateset_equal(&existing, subset)) {
-			*state = i;
-			return DFA_OK;
-		}
-	}
-
-	if (builder->state_count == builder->state_cap && builder_grow(builder) != DFA_OK) {
-		return DFA_ERR;
-	}
-
-	size_t id = builder->state_count;
-
-	memcpy(
-		&builder->subsets[id * builder->word_count],
-		subset->words,
-		builder->word_count * sizeof *subset->words
-	);
-
-	builder->accepting[id] = (unsigned char)stateset_contains(subset, builder->source->start);
-	builder->state_count++;
-
-	*state = id;
-	return DFA_OK;
-}
-
-static void builder_set_transition(
-	ReverseBuilder *builder,
-	StateId from,
-	size_t symbol_index,
-	StateId to
-) {
-	assert(from < builder->state_count);
-	assert(to   < builder->state_count);
-	assert(symbol_index < builder->source->alphabet_count);
-
-	builder->transitions[from * builder->source->alphabet_count + symbol_index] = to;
-}
 
 static void reverse_move(
 	const Dfa *source,
@@ -150,11 +18,7 @@ static void reverse_move(
 	stateset_clear(to);
 
 	for (StateId state = 0; state < source->state_count; ++state) {
-		StateId target = source->transitions[
-			state * source->alphabet_count
-			+ symbol_index
-		];
-
+		StateId target = source->transitions[state * source->alphabet_count + symbol_index];
 		assert(target < source->state_count);
 
 		if (stateset_contains(from, target)) {
@@ -177,36 +41,30 @@ static DfaResult reverse_determinize(Dfa *dfa, const Dfa *source) {
 	assert(dfa->accepting      == NULL);
 	assert(dfa->transitions    == NULL);
 
-	ReverseBuilder builder = {.source = source};
+	size_t word_count = source->state_count / 64 + (size_t)(source->state_count % 64 != 0);
 
-	builder.word_count = source->state_count / 64 + (size_t)(source->state_count % 64 != 0);
+	DfaBuilder builder;
+	dfa_builder_init(&builder, source->alphabet, source->alphabet_count, word_count);
+
+	uint64_t *initial_words = NULL;
+	uint64_t *next_words    = NULL;
 
 	if (builder.word_count > SIZE_MAX / sizeof(uint64_t)) {
-		return DFA_ERR;
+		goto fail;
 	}
 
-	uint64_t *initial_words = calloc(builder.word_count, sizeof *initial_words);
-
+	initial_words = calloc(builder.word_count, sizeof *initial_words);
 	if (initial_words == NULL) {
-		return DFA_ERR;
+		goto fail;
 	}
 
-	uint64_t *next_words = calloc(builder.word_count, sizeof *next_words);
-
+	next_words = calloc(builder.word_count, sizeof *next_words);
 	if (next_words == NULL) {
-		free(initial_words);
-		return DFA_ERR;
+		goto fail;
 	}
 
-	StateSet initial = {
-		.words      = initial_words,
-		.word_count = builder.word_count,
-	};
-
-	StateSet next = {
-		.words      = next_words,
-		.word_count = builder.word_count,
-	};
+	StateSet initial = {.words = initial_words, .word_count = builder.word_count};
+	StateSet next    = {.words = next_words,    .word_count = builder.word_count};
 
 	for (StateId state = 0; state < source->state_count; ++state) {
 		if (source->accepting[state]) {
@@ -216,72 +74,44 @@ static DfaResult reverse_determinize(Dfa *dfa, const Dfa *source) {
 
 	StateId initial_state;
 
-	if (builder_intern(&builder, &initial, &initial_state) != DFA_OK) {
-		builder_free(&builder);
-		free(next_words);
-		free(initial_words);
-
-		return DFA_ERR;
+	if (dfa_builder_intern(&builder, &initial, stateset_contains(&initial, source->start),
+	                       &initial_state) != DFA_OK) {
+		goto fail;
 	}
 
 	for (StateId state = 0; state < builder.state_count; ++state) {
 		for (size_t sym_index = 0; sym_index < source->alphabet_count; ++sym_index) {
-			StateSet current = {
-				.words      = builder_subset(&builder, state),
-				.word_count = builder.word_count,
-			};
+			StateSet current = dfa_builder_subset(&builder, state);
 
 			reverse_move(source, &current, sym_index, &next);
 
 			StateId target;
 
-			if (builder_intern(&builder, &next, &target) != DFA_OK) {
-				builder_free(&builder);
-				free(next_words);
-				free(initial_words);
-
-				return DFA_ERR;
+			if (dfa_builder_intern(&builder, &next,
+			                       stateset_contains(&next, source->start),
+			                       &target) != DFA_OK) {
+				goto fail;
 			}
 
-			builder_set_transition(&builder, state, sym_index, target);
+			dfa_builder_set_transition(&builder, state, sym_index, target);
 		}
 	}
 
-	unsigned char *alphabet = NULL;
-
-	if (source->alphabet_count != 0) {
-		alphabet = malloc(source->alphabet_count * sizeof *alphabet);
-
-		if (alphabet == NULL) {
-			builder_free(&builder);
-			free(next_words);
-			free(initial_words);
-
-			return DFA_ERR;
-		}
-
-		memcpy(alphabet, source->alphabet, source->alphabet_count * sizeof *alphabet);
+	if (dfa_builder_finish(&builder, initial_state, dfa) != DFA_OK) {
+		goto fail;
 	}
-
-	free(builder.subsets);
-	builder.subsets = NULL;
-
-	*dfa = (Dfa){
-		.state_count    = builder.state_count,
-		.start          = initial_state,
-		.alphabet       = alphabet,
-		.alphabet_count = source->alphabet_count,
-		.accepting      = builder.accepting,
-		.transitions    = builder.transitions,
-	};
-
-	builder.accepting   = NULL;
-	builder.transitions = NULL;
 
 	free(next_words);
 	free(initial_words);
 
 	return DFA_OK;
+
+fail:
+	dfa_builder_free(&builder);
+	free(next_words);
+	free(initial_words);
+
+	return DFA_ERR;
 }
 
 DfaResult dfa_minimize(Dfa *dfa, const Dfa *source) {
