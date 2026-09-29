@@ -4,8 +4,9 @@
 #include <automata/dfa.h>
 #include <automata/nfa.h>
 
-Nfa test_build_nfa(const char *source);
-Dfa test_build_dfa(const char *source);
+Nfa test_build_nfa          (const char *source);
+Dfa test_build_dfa          (const char *source);
+Dfa test_build_minimized_dfa(const char *source);
 
 int test_nfa_accepts(const Nfa *nfa, const char *word);
 int test_dfa_accepts(const Dfa *dfa, const char *word);

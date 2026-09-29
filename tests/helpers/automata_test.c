@@ -84,6 +84,22 @@ Dfa test_build_dfa(const char *source) {
 	return dfa;
 }
 
+Dfa test_build_minimized_dfa(const char *source) {
+	Dfa source_dfa = test_build_dfa(source);
+	Dfa minimized  = {0};
+
+	cr_assert_eq(
+		dfa_minimize(&minimized, &source_dfa),
+		DFA_OK,
+		"failed to minimize \"%s\"",
+		source
+	);
+
+	dfa_free(&source_dfa);
+
+	return minimized;
+}
+
 int test_nfa_accepts(const Nfa *nfa, const char *word) {
 	unsigned char *current = calloc(nfa->state_count, sizeof *current);
 	unsigned char *next    = calloc(nfa->state_count, sizeof *next);
