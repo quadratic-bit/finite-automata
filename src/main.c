@@ -6,7 +6,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static int command_regex(const char *source, int determinize) {
+typedef struct {
+	int dfa;
+	int minimize;
+} Options;
+
+static int command_regex(const char *source, const Options *options) {
 	Regex      regex = {0};
 	RegexError error = {0};
 
@@ -27,7 +32,7 @@ static int command_regex(const char *source, int determinize) {
 
 	regex_free(&regex);
 
-	if (!determinize) {
+	if (!options->dfa && !options->minimize) {
 		if (nfa_write_dot(&nfa, stdout) != DOT_OK) {
 			fprintf(stderr, "failed to write DOT\n");
 			nfa_free(&nfa);
@@ -50,20 +55,43 @@ static int command_regex(const char *source, int determinize) {
 
 	nfa_free(&nfa);
 
-	if (dfa_write_dot(&dfa, stdout) != DOT_OK) {
-		fprintf(stderr, "failed to write DOT\n");
+	if (!options->minimize) {
+		if (dfa_write_dot(&dfa, stdout) != DOT_OK) {
+			fprintf(stderr, "failed to write DOT\n");
+			dfa_free(&dfa);
+
+			return 1;
+		}
+
+		dfa_free(&dfa);
+		return 0;
+	}
+
+	Dfa minimized = {0};
+
+	if (dfa_minimize(&minimized, &dfa) != DFA_OK) {
+		fprintf(stderr, "failed to minimize DFA\n");
 		dfa_free(&dfa);
 
 		return 1;
 	}
 
 	dfa_free(&dfa);
+
+	if (dfa_write_dot(&minimized, stdout) != DOT_OK) {
+		fprintf(stderr, "failed to write DOT\n");
+		dfa_free(&minimized);
+
+		return 1;
+	}
+
+	dfa_free(&minimized);
 	return 0;
 }
 
 int main(int argc, char **argv) {
-	if (argc < 3 || argc > 4) {
-		fprintf(stderr, "usage: %s regex <expression> [--dfa]\n", argv[0]);
+	if (argc < 3) {
+		fprintf(stderr, "usage: %s regex <expression> [--dfa] [--min]\n", argv[0]);
 
 		return 1;
 	}
@@ -73,16 +101,22 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	int determinize = 0;
+	Options options = {0};
 
-	if (argc == 4) {
-		if (strcmp(argv[3], "--dfa") != 0) {
-			fprintf(stderr, "unknown option: %s\n", argv[3]);
-			return 1;
+	for (int i = 3; i < argc; ++i) {
+		if (strcmp(argv[i], "--dfa") == 0) {
+			options.dfa = 1;
+			continue;
 		}
 
-		determinize = 1;
+		if (strcmp(argv[i], "--min") == 0) {
+			options.minimize = 1;
+			continue;
+		}
+
+		fprintf(stderr, "unknown option: %s\n", argv[i]);
+		return 1;
 	}
 
-	return command_regex(argv[2], determinize);
+	return command_regex(argv[2], &options);
 }

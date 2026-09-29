@@ -22,6 +22,7 @@ typedef enum {
 } DfaResult;
 
 DfaResult dfa_from_nfa(Dfa *dfa, const Nfa *nfa);
+DfaResult dfa_minimize(Dfa *dfa, const Dfa *source);
 
 void dfa_free(Dfa *dfa);
 
