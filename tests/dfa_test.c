@@ -189,3 +189,60 @@ Test(dfa, composed_expression) {
 
 	dfa_free(&dfa);
 }
+
+Test(dfa, complement) {
+	Dfa dfa = test_build_dfa("a");
+
+	dfa_complement(&dfa);
+
+	test_assert_dfa_accepts(&dfa, "");
+	test_assert_dfa_rejects(&dfa, "a");
+	test_assert_dfa_accepts(&dfa, "aa");
+	test_assert_dfa_accepts(&dfa, "aaa");
+
+	dfa_free(&dfa);
+}
+
+Test(dfa, complement_twice_is_identity) {
+	Dfa dfa = test_build_dfa("(a+b)*abb");
+
+	static const char *words[] = {
+		"",
+		"a",
+		"b",
+		"abb",
+		"aabb",
+		"abba",
+		"abababb",
+	};
+
+	int before[sizeof words / sizeof words[0]];
+
+	for (size_t i = 0; i < sizeof words / sizeof words[0]; ++i) {
+		before[i] = test_dfa_accepts(&dfa, words[i]);
+	}
+
+	dfa_complement(&dfa);
+	dfa_complement(&dfa);
+
+	for (size_t i = 0; i < sizeof words / sizeof words[0]; ++i) {
+		cr_assert_eq(
+			test_dfa_accepts(&dfa, words[i]),
+			before[i],
+			"double complement changed \"%s\"",
+			words[i]
+		);
+	}
+
+	dfa_free(&dfa);
+}
+
+Test(dfa, complement_empty_language) {
+	Dfa dfa = test_build_dfa("0");
+
+	dfa_complement(&dfa);
+
+	test_assert_dfa_accepts(&dfa, "");
+
+	dfa_free(&dfa);
+}

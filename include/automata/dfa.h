@@ -21,8 +21,9 @@ typedef enum {
 	DFA_ERR,
 } DfaResult;
 
-DfaResult dfa_from_nfa(Dfa *dfa, const Nfa *nfa);
-DfaResult dfa_minimize(Dfa *dfa, const Dfa *source);
+DfaResult dfa_from_nfa  (Dfa *dfa, const Nfa *nfa);
+DfaResult dfa_minimize  (Dfa *dfa, const Dfa *source);
+void      dfa_complement(Dfa *dfa);
 
 void dfa_free(Dfa *dfa);
 

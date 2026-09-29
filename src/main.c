@@ -88,6 +88,15 @@ static int automaton_reverse(Automaton *automaton) {
 	return 1;
 }
 
+static int automaton_complement(Automaton *automaton) {
+	if (!automaton_determinize(automaton)) {
+		return 0;
+	}
+
+	dfa_complement(&automaton->as.dfa);
+	return 1;
+}
+
 static int apply_operation(Automaton *automaton, const char *operation) {
 	if (strcmp(operation, "dfa") == 0) {
 		return automaton_determinize(automaton);
@@ -99,6 +108,10 @@ static int apply_operation(Automaton *automaton, const char *operation) {
 
 	if (strcmp(operation, "reverse") == 0) {
 		return automaton_reverse(automaton);
+	}
+
+	if (strcmp(operation, "complement") == 0) {
+		return automaton_complement(automaton);
 	}
 
 	fprintf(stderr, "unknown operation: %s\n", operation);

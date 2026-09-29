@@ -60,9 +60,10 @@ The basic command constructs an ε-NFA and writes to stdout as Graphviz DOT:
 Additional automaton operations may be chained after the regular expression:
 
 ```text
-dfa       determinize the current automaton
-min       minimize the current automaton
-reverse   reverse the language of the current automaton
+dfa          determinize the current automaton
+min          minimize the current automaton
+reverse      reverse the language of the current automaton
+complement   complement the language of the current automaton
 ```
 
 Operations are applied from left to right. For example, to first minimize then reverse:

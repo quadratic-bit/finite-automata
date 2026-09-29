@@ -398,6 +398,16 @@ fail:
 	return DFA_ERR;
 }
 
+void dfa_complement(Dfa *dfa) {
+	assert(dfa != NULL);
+	assert(dfa->state_count > 0);
+	assert(dfa->start < dfa->state_count);
+
+	for (StateId state = 0; state < dfa->state_count; ++state) {
+		dfa->accepting[state] = (unsigned char)!dfa->accepting[state];
+	}
+}
+
 void dfa_free(Dfa *dfa) {
 	assert(dfa != NULL);
 
