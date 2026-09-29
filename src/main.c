@@ -2,22 +2,137 @@
 #include <automata/dot.h>
 #include <automata/nfa.h>
 #include <automata/regex.h>
+#include <automata/reverse.h>
 
 #include <stdio.h>
 #include <string.h>
 
-typedef struct {
-	int dfa;
-	int minimize;
-} Options;
+typedef enum {
+	AUTOMATON_NFA,
+	AUTOMATON_DFA,
+} AutomatonKind;
 
-static int command_regex(const char *source, const Options *options) {
+typedef struct {
+	AutomatonKind kind;
+
+	union {
+		Nfa nfa;
+		Dfa dfa;
+	} as;
+} Automaton;
+
+static void automaton_free(Automaton *automaton) {
+	switch (automaton->kind) {
+	case AUTOMATON_NFA:
+		nfa_free(&automaton->as.nfa);
+		break;
+
+	case AUTOMATON_DFA:
+		dfa_free(&automaton->as.dfa);
+		break;
+	}
+}
+
+static int automaton_determinize(Automaton *automaton) {
+	if (automaton->kind == AUTOMATON_DFA) {
+		return 1;
+	}
+
+	Dfa dfa = {0};
+
+	if (dfa_from_nfa(&dfa, &automaton->as.nfa) != DFA_OK) {
+		return 0;
+	}
+
+	nfa_free(&automaton->as.nfa);
+
+	automaton->kind   = AUTOMATON_DFA;
+	automaton->as.dfa = dfa;
+
+	return 1;
+}
+
+static int automaton_minimize(Automaton *automaton) {
+	if (!automaton_determinize(automaton)) {
+		return 0;
+	}
+
+	Dfa minimized = {0};
+
+	if (dfa_minimize(&minimized, &automaton->as.dfa) != DFA_OK) {
+		return 0;
+	}
+
+	dfa_free(&automaton->as.dfa);
+	automaton->as.dfa = minimized;
+
+	return 1;
+}
+
+static int automaton_reverse(Automaton *automaton) {
+	if (!automaton_determinize(automaton)) {
+		return 0;
+	}
+
+	Nfa reversed = {0};
+
+	if (nfa_reverse_dfa(&reversed, &automaton->as.dfa) != NFA_OK) {
+		return 0;
+	}
+
+	dfa_free(&automaton->as.dfa);
+
+	automaton->kind   = AUTOMATON_NFA;
+	automaton->as.nfa = reversed;
+
+	return 1;
+}
+
+static int apply_operation(Automaton *automaton, const char *operation) {
+	if (strcmp(operation, "dfa") == 0) {
+		return automaton_determinize(automaton);
+	}
+
+	if (strcmp(operation, "min") == 0) {
+		return automaton_minimize(automaton);
+	}
+
+	if (strcmp(operation, "reverse") == 0) {
+		return automaton_reverse(automaton);
+	}
+
+	fprintf(stderr, "unknown operation: %s\n", operation);
+	return 0;
+}
+
+static int automaton_write_dot(const Automaton *automaton) {
+	switch (automaton->kind) {
+	case AUTOMATON_NFA:
+		return nfa_write_dot(&automaton->as.nfa, stdout) == DOT_OK;
+
+	case AUTOMATON_DFA:
+		return dfa_write_dot(&automaton->as.dfa, stdout) == DOT_OK;
+	}
+
+	return 0;
+}
+
+int main(int argc, char **argv) {
+	if (argc < 3) {
+		fprintf(stderr, "usage: %s regex <expression> [operation...]\n", argv[0]);
+		return 1;
+	}
+
+	if (strcmp(argv[1], "regex") != 0) {
+		fprintf(stderr, "expected 'regex'\n");
+		return 1;
+	}
+
 	Regex      regex = {0};
 	RegexError error = {0};
 
-	if (regex_parse(&regex, source, &error) != REGEX_OK) {
-		fprintf(stderr, "regex:%zu: %s\n", error.position, error.message);
-
+	if (regex_parse(&regex, argv[2], &error) != REGEX_OK) {
+		fprintf(stderr, "regex error at %zu: %s\n", error.position, error.message);
 		return 1;
 	}
 
@@ -26,97 +141,30 @@ static int command_regex(const char *source, const Options *options) {
 	if (nfa_from_regex(&nfa, &regex) != NFA_OK) {
 		fprintf(stderr, "failed to construct NFA\n");
 		regex_free(&regex);
-
 		return 1;
 	}
 
 	regex_free(&regex);
 
-	if (!options->dfa && !options->minimize) {
-		if (nfa_write_dot(&nfa, stdout) != DOT_OK) {
-			fprintf(stderr, "failed to write DOT\n");
-			nfa_free(&nfa);
-
-			return 1;
-		}
-
-		nfa_free(&nfa);
-		return 0;
-	}
-
-	Dfa dfa = {0};
-
-	if (dfa_from_nfa(&dfa, &nfa) != DFA_OK) {
-		fprintf(stderr, "failed to determinize NFA\n");
-		nfa_free(&nfa);
-
-		return 1;
-	}
-
-	nfa_free(&nfa);
-
-	if (!options->minimize) {
-		if (dfa_write_dot(&dfa, stdout) != DOT_OK) {
-			fprintf(stderr, "failed to write DOT\n");
-			dfa_free(&dfa);
-
-			return 1;
-		}
-
-		dfa_free(&dfa);
-		return 0;
-	}
-
-	Dfa minimized = {0};
-
-	if (dfa_minimize(&minimized, &dfa) != DFA_OK) {
-		fprintf(stderr, "failed to minimize DFA\n");
-		dfa_free(&dfa);
-
-		return 1;
-	}
-
-	dfa_free(&dfa);
-
-	if (dfa_write_dot(&minimized, stdout) != DOT_OK) {
-		fprintf(stderr, "failed to write DOT\n");
-		dfa_free(&minimized);
-
-		return 1;
-	}
-
-	dfa_free(&minimized);
-	return 0;
-}
-
-int main(int argc, char **argv) {
-	if (argc < 3) {
-		fprintf(stderr, "usage: %s regex <expression> [--dfa] [--min]\n", argv[0]);
-
-		return 1;
-	}
-
-	if (strcmp(argv[1], "regex") != 0) {
-		fprintf(stderr, "unknown command: %s\n", argv[1]);
-		return 1;
-	}
-
-	Options options = {0};
+	Automaton automaton = {
+		.kind   = AUTOMATON_NFA,
+		.as.nfa = nfa,
+	};
 
 	for (int i = 3; i < argc; ++i) {
-		if (strcmp(argv[i], "--dfa") == 0) {
-			options.dfa = 1;
-			continue;
+		if (!apply_operation(&automaton, argv[i])) {
+			automaton_free(&automaton);
+			return 1;
 		}
+	}
 
-		if (strcmp(argv[i], "--min") == 0) {
-			options.minimize = 1;
-			continue;
-		}
-
-		fprintf(stderr, "unknown option: %s\n", argv[i]);
+	if (!automaton_write_dot(&automaton)) {
+		fprintf(stderr, "failed to write DOT\n");
+		automaton_free(&automaton);
 		return 1;
 	}
 
-	return command_regex(argv[2], &options);
+	automaton_free(&automaton);
+
+	return 0;
 }

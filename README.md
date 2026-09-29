@@ -57,16 +57,17 @@ The basic command constructs an ε-NFA and writes to stdout as Graphviz DOT:
 ./build/automata regex 'a+b'
 ```
 
-To determinize the automaton:
+Additional automaton operations may be chained after the regular expression:
 
-```sh
-./build/automata regex 'a+b' --dfa
+```text
+dfa       determinize the current automaton
+min       minimize the current automaton
+reverse   reverse the language of the current automaton
 ```
 
-To construct a minimized DFA:
-
-```sh
-./build/automata regex '(a+b)*abb' --min
+Operations are applied from left to right. For example, to first minimize then reverse:
+```text
+./build/automata regex '(a+b)*abb' min reverse
 ```
 
 ## Tests
