@@ -12,8 +12,45 @@ CFLAGS := \
 	-fsanitize=address,undefined
 
 CPPFLAGS := -Iinclude
+COVFLAGS := -fprofile-instr-generate -fcoverage-mapping
 
-SRC := $(wildcard src/*.c)
+SRC      := $(wildcard src/*.c)
+TEST_SRC := $(wildcard tests/*.c)
+LIB_SRC  := $(filter-out src/main.c,$(SRC))
 
 build/automata: $(SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(SRC) -o $@
+
+build/tests: $(LIB_SRC) $(TEST_SRC) | build
+	$(CC) \
+		$(CFLAGS) \
+		$(CPPFLAGS) \
+		$(LIB_SRC) \
+		$(TEST_SRC) \
+		-lcriterion \
+		-o $@
+
+test: build/tests
+	./build/tests
+
+build/tests-cov: $(LIB_SRC) $(TEST_SRC) | build
+	$(CC) \
+		$(CFLAGS) \
+		$(COVFLAGS) \
+		$(CPPFLAGS) \
+		$(LIB_SRC) \
+		$(TEST_SRC) \
+		-lcriterion \
+		-o $@
+
+coverage: build/tests-cov
+	rm -f build/coverage-*.profraw build/coverage.profdata
+	LLVM_PROFILE_FILE="build/coverage-%p.profraw" ./build/tests-cov
+	llvm-profdata merge -sparse build/coverage-*.profraw -o build/coverage.profdata
+	llvm-cov report ./build/tests-cov -instr-profile=build/coverage.profdata $(LIB_SRC)
+
+coverage-show: coverage
+	llvm-cov show ./build/tests-cov \
+		-instr-profile=build/coverage.profdata \
+		-show-line-counts-or-regions \
+		$(LIB_SRC)
