@@ -21,6 +21,15 @@ typedef struct {
 	} as;
 } Automaton;
 
+static const char *automaton_kind_name(AutomatonKind kind) {
+	switch (kind) {
+	case AUTOMATON_NFA: return "NFA";
+	case AUTOMATON_DFA: return "DFA";
+	}
+
+	return "unknown";
+}
+
 static void automaton_free(Automaton *automaton) {
 	switch (automaton->kind) {
 	case AUTOMATON_NFA:
@@ -34,13 +43,19 @@ static void automaton_free(Automaton *automaton) {
 }
 
 static int automaton_determinize(Automaton *automaton) {
-	if (automaton->kind == AUTOMATON_DFA) {
-		return 1;
+	if (automaton->kind != AUTOMATON_NFA) {
+		fprintf(
+			stderr,
+			"operation 'det' requires NFA, got %s\n",
+			automaton_kind_name(automaton->kind)
+		);
+		return 0;
 	}
 
 	Dfa dfa = {0};
 
 	if (dfa_from_nfa(&dfa, &automaton->as.nfa) != DFA_OK) {
+		fprintf(stderr, "failed to determinize NFA\n");
 		return 0;
 	}
 
@@ -53,13 +68,19 @@ static int automaton_determinize(Automaton *automaton) {
 }
 
 static int automaton_minimize(Automaton *automaton) {
-	if (!automaton_determinize(automaton)) {
+	if (automaton->kind != AUTOMATON_DFA) {
+		fprintf(
+			stderr,
+			"operation 'min' requires DFA, got %s\n",
+			automaton_kind_name(automaton->kind)
+		);
 		return 0;
 	}
 
 	Dfa minimized = {0};
 
 	if (dfa_minimize(&minimized, &automaton->as.dfa) != DFA_OK) {
+		fprintf(stderr, "failed to minimize DFA\n");
 		return 0;
 	}
 
@@ -75,6 +96,7 @@ static int automaton_reverse(Automaton *automaton) {
 	switch (automaton->kind) {
 	case AUTOMATON_NFA:
 		if (nfa_reverse(&reversed, &automaton->as.nfa) != NFA_OK) {
+			fprintf(stderr, "failed to reverse NFA\n");
 			return 0;
 		}
 
@@ -84,6 +106,7 @@ static int automaton_reverse(Automaton *automaton) {
 
 	case AUTOMATON_DFA:
 		if (nfa_reverse_dfa(&reversed, &automaton->as.dfa) != NFA_OK) {
+			fprintf(stderr, "failed to reverse DFA\n");
 			return 0;
 		}
 
@@ -98,7 +121,12 @@ static int automaton_reverse(Automaton *automaton) {
 }
 
 static int automaton_complement(Automaton *automaton) {
-	if (!automaton_determinize(automaton)) {
+	if (automaton->kind != AUTOMATON_DFA) {
+		fprintf(
+			stderr,
+			"operation 'compl' requires DFA, got %s\n",
+			automaton_kind_name(automaton->kind)
+		);
 		return 0;
 	}
 
@@ -107,7 +135,7 @@ static int automaton_complement(Automaton *automaton) {
 }
 
 static int apply_operation(Automaton *automaton, const char *operation) {
-	if (strcmp(operation, "dfa") == 0) {
+	if (strcmp(operation, "det") == 0) {
 		return automaton_determinize(automaton);
 	}
 
@@ -115,11 +143,11 @@ static int apply_operation(Automaton *automaton, const char *operation) {
 		return automaton_minimize(automaton);
 	}
 
-	if (strcmp(operation, "reverse") == 0) {
+	if (strcmp(operation, "rev") == 0) {
 		return automaton_reverse(automaton);
 	}
 
-	if (strcmp(operation, "complement") == 0) {
+	if (strcmp(operation, "compl") == 0) {
 		return automaton_complement(automaton);
 	}
 
@@ -141,7 +169,7 @@ static int automaton_write_dot(const Automaton *automaton) {
 
 int main(int argc, char **argv) {
 	if (argc < 3) {
-		fprintf(stderr, "usage: %s regex <expression> [operation...]\n", argv[0]);
+		fprintf(stderr, "usage: %s regex <expression> [det|min|rev|compl ...]\n", argv[0]);
 		return 1;
 	}
 
