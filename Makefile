@@ -15,7 +15,7 @@ CPPFLAGS := -Iinclude
 COVFLAGS := -fprofile-instr-generate -fcoverage-mapping
 
 SRC      := $(wildcard src/*.c)
-TEST_SRC := $(wildcard tests/*.c)
+TEST_SRC := $(wildcard tests/*.c) $(wildcard tests/helpers/*.c)
 LIB_SRC  := $(filter-out src/main.c,$(SRC))
 
 build/automata: $(SRC)
