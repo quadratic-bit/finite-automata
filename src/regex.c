@@ -52,22 +52,6 @@ static int parser_starts_atom(char c) {
 	}
 }
 
-static int parser_is_literal(char c) {
-	switch (c) {
-	case '\0':
-	case '0':
-	case '1':
-	case '(':
-	case ')':
-	case '+':
-	case '*':
-		return 0;
-
-	default:
-		return 1;
-	}
-}
-
 static RegexNode *node_new(Parser *parser, RegexNodeKind kind) {
 	RegexNode *node = arena_alloc(
 		&parser->regex->arena,
@@ -124,6 +108,8 @@ static RegexNode *node_unary(Parser *parser, RegexNodeKind kind, RegexNode *chil
 static RegexNode *parse_atom(Parser *parser) {
 	char c = parser_peek(parser);
 
+	assert(parser_starts_atom(c));
+
 	switch (c) {
 	case '0':
 		parser_advance(parser);
@@ -150,16 +136,9 @@ static RegexNode *parse_atom(Parser *parser) {
 		return node;
 
 	default:
-		break;
+		parser_advance(parser);
+		return node_literal(parser, (unsigned char)c);
 	}
-
-	if (!parser_is_literal(c)) {
-		parser_set_error(parser, "expected expression");
-		return NULL;
-	}
-
-	parser_advance(parser);
-	return node_literal(parser, (unsigned char)c);
 }
 
 static RegexNode *parse_repeat(Parser *parser) {
