@@ -18,7 +18,9 @@ SRC      := $(wildcard src/*.c)
 TEST_SRC := $(wildcard tests/*.c) $(wildcard tests/helpers/*.c)
 LIB_SRC  := $(filter-out src/main.c,$(SRC))
 
-build/automata: $(SRC)
+.PHONY: test coverage coverage-show clean
+
+build/automata: $(SRC) | build
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(SRC) -o $@
 
 build/tests: $(LIB_SRC) $(TEST_SRC) | build
@@ -54,3 +56,9 @@ coverage-show: coverage
 		-instr-profile=build/coverage.profdata \
 		-show-line-counts-or-regions \
 		$(LIB_SRC)
+
+build:
+	mkdir -p build
+
+clean:
+	rm -rf build
