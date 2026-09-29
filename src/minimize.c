@@ -1,15 +1,12 @@
 #include <automata/dfa.h>
 
+#include "stateset.h"
+
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct {
-	uint64_t *words;
-	size_t    word_count;
-} StateSet;
 
 typedef struct {
 	const Dfa *source;
@@ -23,34 +20,6 @@ typedef struct {
 	size_t state_count;
 	size_t state_cap;
 } ReverseBuilder;
-
-static void stateset_clear(StateSet *set) {
-	memset(set->words, 0, set->word_count * sizeof *set->words);
-}
-
-static void stateset_add(StateSet *set, StateId state) {
-	size_t word = state / 64;
-	size_t bit  = state % 64;
-
-	assert(word < set->word_count);
-
-	set->words[word] |= UINT64_C(1) << bit;
-}
-
-static int stateset_contains(const StateSet *set, StateId state) {
-	size_t word = state / 64;
-	size_t bit  = state % 64;
-
-	assert(word < set->word_count);
-
-	return (set->words[word] & (UINT64_C(1) << bit)) != 0;
-}
-
-static int stateset_equal(const StateSet *left, const StateSet *right) {
-	assert(left->word_count == right->word_count);
-
-	return memcmp(left->words, right->words, left->word_count * sizeof *left->words) == 0;
-}
 
 static uint64_t *builder_subset(ReverseBuilder *builder, StateId state) {
 	assert(state < builder->state_count);
