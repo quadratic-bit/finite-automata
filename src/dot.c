@@ -3,6 +3,60 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+static void nfa_mark_finishable(const Nfa *nfa, unsigned char *finishable) {
+	finishable[nfa->accept] = 1;
+
+	int changed;
+
+	do {
+		changed = 0;
+
+		for (size_t i = 0; i < nfa->transition_count; ++i) {
+			const NfaTransition *transition = &nfa->transitions[i];
+
+			if (finishable[transition->to] && !finishable[transition->from]) {
+				finishable[transition->from] = 1;
+				changed = 1;
+			}
+		}
+	} while (changed);
+}
+
+static void dfa_mark_finishable(const Dfa *dfa, unsigned char *finishable) {
+	for (StateId state = 0; state < dfa->state_count; ++state) {
+		if (dfa->accepting[state]) {
+			finishable[state] = 1;
+		}
+	}
+
+	int changed;
+
+	do {
+		changed = 0;
+
+		for (StateId state = 0; state < dfa->state_count; ++state) {
+			if (finishable[state]) {
+				continue;
+			}
+
+			for (size_t sym_index = 0; sym_index < dfa->alphabet_count; ++sym_index) {
+				StateId target = dfa->transitions[
+					state * dfa->alphabet_count + sym_index
+				];
+
+				assert(target < dfa->state_count);
+
+				if (finishable[target]) {
+					finishable[state] = 1;
+					changed = 1;
+					break;
+				}
+			}
+		}
+	} while (changed);
+}
 
 static DotResult write_symbol(FILE *out, unsigned char symbol) {
 	if (symbol == '"') {
@@ -70,34 +124,49 @@ DotResult nfa_write_dot(const Nfa *nfa, FILE *out) {
 	assert(nfa->start  < nfa->state_count);
 	assert(nfa->accept < nfa->state_count);
 
-	if (fputs("digraph NFA {\n", out) == EOF) {
+	unsigned char *finishable = calloc(nfa->state_count, sizeof *finishable);
+	if (finishable == NULL) {
 		return DOT_ERR;
+	}
+
+	nfa_mark_finishable(nfa, finishable);
+
+	if (fputs("digraph NFA {\n", out) == EOF) {
+		goto fail;
 	}
 
 	if (fputs("\trankdir=LR;\n\n", out) == EOF) {
-		return DOT_ERR;
+		goto fail;
 	}
 
 	if (fputs("\tstart [shape=point, label=\"\"];\n", out) == EOF) {
-		return DOT_ERR;
+		goto fail;
 	}
 
-	if (fprintf(out, "\tstart -> q%zu;\n\n", nfa->start) < 0) {
-		return DOT_ERR;
+	if (finishable[nfa->start]) {
+		if (fprintf(out, "\tstart -> q%zu;\n", nfa->start) < 0) {
+			goto fail;
+		}
 	}
 
-	for (size_t state = 0; state < nfa->state_count; ++state) {
+	if (fputc('\n', out) == EOF) {
+		goto fail;
+	}
+
+	for (StateId state = 0; state < nfa->state_count; ++state) {
+		if (!finishable[state]) {
+			continue;
+		}
+
 		const char *shape = state == nfa->accept ? "doublecircle" : "circle";
 
 		if (fprintf(out, "\tq%zu [shape=%s];\n", state, shape) < 0) {
-			return DOT_ERR;
+			goto fail;
 		}
 	}
 
-	if (nfa->transition_count > 0) {
-		if (fputc('\n', out) == EOF) {
-			return DOT_ERR;
-		}
+	if (fputc('\n', out) == EOF) {
+		goto fail;
 	}
 
 	for (size_t i = 0; i < nfa->transition_count; ++i) {
@@ -106,20 +175,29 @@ DotResult nfa_write_dot(const Nfa *nfa, FILE *out) {
 		assert(transition->from < nfa->state_count);
 		assert(transition->to   < nfa->state_count);
 
+		if (!finishable[transition->from] || !finishable[transition->to]) {
+			continue;
+		}
+
 		if (write_transition(out, transition) != DOT_OK) {
-			return DOT_ERR;
+			goto fail;
 		}
 	}
 
 	if (fputs("}\n", out) == EOF) {
-		return DOT_ERR;
+		goto fail;
 	}
 
 	if (ferror(out)) {
-		return DOT_ERR;
+		goto fail;
 	}
 
+	free(finishable);
 	return DOT_OK;
+
+fail:
+	free(finishable);
+	return DOT_ERR;
 }
 
 DotResult dfa_write_dot(const Dfa *dfa, FILE *out) {
@@ -129,61 +207,91 @@ DotResult dfa_write_dot(const Dfa *dfa, FILE *out) {
 	assert(dfa->state_count > 0);
 	assert(dfa->start < dfa->state_count);
 
-	if (fputs("digraph DFA {\n", out) == EOF) {
+	unsigned char *finishable = calloc(dfa->state_count, sizeof *finishable);
+	if (finishable == NULL) {
 		return DOT_ERR;
+	}
+
+	dfa_mark_finishable(dfa, finishable);
+
+	if (fputs("digraph DFA {\n", out) == EOF) {
+		goto fail;
 	}
 
 	if (fputs("\trankdir=LR;\n\n", out) == EOF) {
-		return DOT_ERR;
+		goto fail;
 	}
 
 	if (fputs("\tstart [shape=point, label=\"\"];\n", out) == EOF) {
-		return DOT_ERR;
+		goto fail;
 	}
 
-	if (fprintf(out, "\tstart -> q%zu;\n\n", dfa->start) < 0) {
-		return DOT_ERR;
-	}
-
-	for (size_t state = 0; state < dfa->state_count; ++state) {
-		const char *shape = dfa->accepting[state] ? "doublecircle" : "circle";
-
-		if (fprintf(out, "\tq%zu [shape=%s];\n", state, shape) < 0) {
-			return DOT_ERR;
+	if (finishable[dfa->start]) {
+		if (fprintf(out, "\tstart -> q%zu;\n", dfa->start) < 0) {
+			goto fail;
 		}
 	}
 
-	if (dfa->state_count > 0 && dfa->alphabet_count > 0 && fputc('\n', out) == EOF) {
-		return DOT_ERR;
+	if (fputc('\n', out) == EOF) {
+		goto fail;
 	}
 
 	for (StateId state = 0; state < dfa->state_count; ++state) {
+		if (!finishable[state]) {
+			continue;
+		}
+
+		const char *shape = dfa->accepting[state] ? "doublecircle" : "circle";
+
+		if (fprintf(out, "\tq%zu [shape=%s];\n", state, shape) < 0) {
+			goto fail;
+		}
+	}
+
+	if (fputc('\n', out) == EOF) {
+		goto fail;
+	}
+
+	for (StateId state = 0; state < dfa->state_count; ++state) {
+		if (!finishable[state]) {
+			continue;
+		}
+
 		for (size_t sym_index = 0; sym_index < dfa->alphabet_count; ++sym_index) {
 			StateId target = dfa->transitions[state * dfa->alphabet_count + sym_index];
 
 			assert(target < dfa->state_count);
 
+			if (!finishable[target]) {
+				continue;
+			}
+
 			if (fprintf(out, "\tq%zu -> q%zu [label=\"", state, target) < 0) {
-				return DOT_ERR;
+				goto fail;
 			}
 
 			if (write_symbol(out, dfa->alphabet[sym_index]) != DOT_OK) {
-				return DOT_ERR;
+				goto fail;
 			}
 
 			if (fputs("\"];\n", out) == EOF) {
-				return DOT_ERR;
+				goto fail;
 			}
 		}
 	}
 
 	if (fputs("}\n", out) == EOF) {
-		return DOT_ERR;
+		goto fail;
 	}
 
 	if (ferror(out)) {
-		return DOT_ERR;
+		goto fail;
 	}
 
+	free(finishable);
 	return DOT_OK;
+
+fail:
+	free(finishable);
+	return DOT_ERR;
 }
