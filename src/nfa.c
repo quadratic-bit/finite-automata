@@ -1,12 +1,13 @@
 #include <automata/nfa.h>
 
+#include "vec.h"
+
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 static const size_t DEFAULT_BUILDER_CAP = 16;
-static const size_t GROWTH_FACTOR       = 2;
 
 typedef struct {
 	StateId start;
@@ -35,23 +36,14 @@ static NfaResult builder_new_state(NfaBuilder *builder, StateId *state) {
 static NfaResult builder_grow_transitions(NfaBuilder *builder) {
 	size_t new_cap;
 
-	if (builder->transition_cap == 0) {
-		new_cap = DEFAULT_BUILDER_CAP;
-	} else {
-		if (builder->transition_cap > SIZE_MAX / GROWTH_FACTOR) {
-			return NFA_ERR;
-		}
-
-		new_cap = builder->transition_cap * GROWTH_FACTOR;
-	}
-
-	if (new_cap > SIZE_MAX / sizeof *builder->transitions) {
+	if (!vec_next_cap(builder->transition_cap, DEFAULT_BUILDER_CAP, &new_cap)) {
 		return NFA_ERR;
 	}
 
-	NfaTransition *transitions = realloc(
+	NfaTransition *transitions = vec_realloc(
 		builder->transitions,
-		new_cap * sizeof *builder->transitions
+		new_cap,
+		sizeof *builder->transitions
 	);
 
 	if (transitions == NULL) {

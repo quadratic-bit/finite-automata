@@ -1,12 +1,15 @@
 #include <automata/dfa.h>
 
 #include "stateset.h"
+#include "vec.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const size_t DEFAULT_BUILDER_CAP = 8;
 
 typedef struct {
 	const Dfa *source;
@@ -38,27 +41,16 @@ static void builder_free(ReverseBuilder *builder) {
 static DfaResult builder_grow(ReverseBuilder *builder) {
 	size_t new_cap;
 
-	if (builder->state_cap == 0) {
-		new_cap = 8;
-	} else {
-		if (builder->state_cap > SIZE_MAX / 2) {
-			return DFA_ERR;
-		}
-
-		new_cap = builder->state_cap * 2;
+	if (!vec_next_cap(builder->state_cap, DEFAULT_BUILDER_CAP, &new_cap)) {
+		return DFA_ERR;
 	}
 
 	if (builder->word_count != 0 && new_cap > SIZE_MAX / builder->word_count) {
 		return DFA_ERR;
 	}
 
-	size_t subset_word_count = new_cap * builder->word_count;
-
-	if (subset_word_count > SIZE_MAX / sizeof *builder->subsets) {
-		return DFA_ERR;
-	}
-
-	uint64_t *subsets = realloc(builder->subsets, subset_word_count * sizeof *builder->subsets);
+	size_t subset_words = new_cap * builder->word_count;
+	uint64_t *subsets = vec_realloc(builder->subsets, subset_words, sizeof *builder->subsets);
 
 	if (subsets == NULL) {
 		return DFA_ERR;
@@ -66,9 +58,10 @@ static DfaResult builder_grow(ReverseBuilder *builder) {
 
 	builder->subsets = subsets;
 
-	unsigned char *accepting = realloc(
+	unsigned char *accepting = vec_realloc(
 		builder->accepting,
-		new_cap * sizeof *builder->accepting
+		new_cap,
+		sizeof *builder->accepting
 	);
 
 	if (accepting == NULL) {
@@ -77,20 +70,19 @@ static DfaResult builder_grow(ReverseBuilder *builder) {
 
 	builder->accepting = accepting;
 
-	if (builder->source->alphabet_count != 0) {
-		if (new_cap > SIZE_MAX / builder->source->alphabet_count) {
+	size_t alphabet_count = builder->source->alphabet_count;
+
+	if (alphabet_count != 0) {
+		if (new_cap > SIZE_MAX / alphabet_count) {
 			return DFA_ERR;
 		}
 
-		size_t transition_count = new_cap * builder->source->alphabet_count;
+		size_t transition_count = new_cap * alphabet_count;
 
-		if (transition_count > SIZE_MAX / sizeof *builder->transitions) {
-			return DFA_ERR;
-		}
-
-		StateId *transitions = realloc(
+		StateId *transitions = vec_realloc(
 			builder->transitions,
-			transition_count * sizeof *builder->transitions
+			transition_count,
+			sizeof *builder->transitions
 		);
 
 		if (transitions == NULL) {
