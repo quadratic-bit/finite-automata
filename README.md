@@ -55,6 +55,9 @@ The command line operates on a stack of finite automata.
 
 If the command finishes with one automaton on the stack,
 that automaton is written to standard output as Graphviz DOT.
+For example, the regex `a+b` produces the following Thompson ε-NFA:
+
+![Thompson ε-NFA for `a+b`](./assets/aplusb.png)
 
 ### Unary operations
 ```text
@@ -71,6 +74,9 @@ For example, to determinize and then minimize:
 ```sh
 ./build/automata regex '(a+b)*abb' det min
 ```
+This yields the following DFA:
+
+![Minimized DFA for `(a+b)*abb`](./assets/detmin.png)
 
 To reverse an NFA directly:
 ```sh
