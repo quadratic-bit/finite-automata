@@ -2,12 +2,18 @@
 #include <automata/dot.h>
 #include <automata/nfa.h>
 #include <automata/ops.h>
+#include <automata/query.h>
 #include <automata/regex.h>
 #include <automata/reverse.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum {
+	EXIT_FALSE = 1,
+	EXIT_ERROR = 2,
+};
 
 typedef enum {
 	AUTOMATON_NFA,
@@ -264,13 +270,43 @@ static int automaton_star(Automaton *automaton) {
 	return 1;
 }
 
-static int automaton_write_dot(const Automaton *automaton) {
+static int automaton_accepts(const Automaton *automaton, const char *word, int *accepts) {
+	size_t length = strlen(word);
+
 	switch (automaton->kind) {
 	case AUTOMATON_NFA:
-		return nfa_write_dot(&automaton->as.nfa, stdout) == DOT_OK;
+		return nfa_accepts(
+			&automaton->as.nfa,
+			(const unsigned char *)word,
+			length,
+			accepts
+		) == QUERY_OK;
 
 	case AUTOMATON_DFA:
-		return dfa_write_dot(&automaton->as.dfa, stdout) == DOT_OK;
+		return dfa_accepts(
+			&automaton->as.dfa,
+			(const unsigned char *)word,
+			length,
+			accepts
+		) == QUERY_OK;
+	}
+
+	return 0;
+}
+
+static int automaton_is_empty(const Automaton *automaton, int *empty) {
+	switch (automaton->kind) {
+	case AUTOMATON_NFA: return nfa_is_empty(&automaton->as.nfa, empty) == QUERY_OK;
+	case AUTOMATON_DFA: return dfa_is_empty(&automaton->as.dfa, empty) == QUERY_OK;
+	}
+
+	return 0;
+}
+
+static int automaton_write_dot(const Automaton *automaton) {
+	switch (automaton->kind) {
+	case AUTOMATON_NFA: return nfa_write_dot(&automaton->as.nfa, stdout) == DOT_OK;
+	case AUTOMATON_DFA: return dfa_write_dot(&automaton->as.dfa, stdout) == DOT_OK;
 	}
 
 	return 0;
@@ -292,7 +328,62 @@ int main(int argc, char **argv) {
 
 	for (int i = 1; i < argc;) {
 		const char *operation = argv[i];
+		if (strcmp(operation, "empty") == 0) {
+			if (stack_len != 1) {
+				fprintf(stderr, "query 'empty' requires exactly one automaton\n");
+				goto fail;
+			}
 
+			if (i + 1 != argc) {
+				fprintf(stderr, "query 'empty' must be terminal\n");
+				goto fail;
+			}
+
+			int empty;
+
+			if (!automaton_is_empty(&stack[0], &empty)) {
+				fprintf(stderr, "failed to test emptiness\n");
+				goto fail;
+			}
+
+			printf("%s\n", empty ? "true" : "false");
+
+			automaton_free(&stack[0]);
+			free(stack);
+
+			return empty ? 0 : EXIT_FALSE;
+		}
+
+		if (strcmp(operation, "accept") == 0) {
+			if (stack_len != 1) {
+				fprintf(stderr, "query 'accept' requires exactly one automaton\n");
+				goto fail;
+			}
+
+			if (i + 1 >= argc) {
+				fprintf(stderr, "query 'accept' requires a word\n");
+				goto fail;
+			}
+
+			if (i + 2 != argc) {
+				fprintf(stderr, "query 'accept' must be terminal\n");
+				goto fail;
+			}
+
+			int accepts;
+
+			if (!automaton_accepts(&stack[0], argv[i + 1], &accepts)) {
+				fprintf(stderr, "failed to test word acceptance\n");
+				goto fail;
+			}
+
+			printf("%s\n", accepts ? "accept" : "reject");
+
+			automaton_free(&stack[0]);
+			free(stack);
+
+			return accepts ? 0 : EXIT_FALSE;
+		}
 		if (strcmp(operation, "regex") == 0) {
 			if (i + 1 >= argc) {
 				fprintf(stderr, "regex requires an expression\n");
@@ -423,5 +514,5 @@ fail:
 	}
 
 	free(stack);
-	return 1;
+	return EXIT_ERROR;
 }
