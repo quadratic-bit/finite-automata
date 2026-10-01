@@ -1,15 +1,18 @@
 CC := clang
 
-CFLAGS := \
-	-std=c17 \
+WARNFLAGS := \
 	-Wall -Wextra -Wpedantic \
 	-Wconversion -Wsign-conversion \
 	-Wshadow -Wformat=2 -Wundef \
 	-Wcast-qual -Wstrict-prototypes \
 	-Wmissing-prototypes -Wswitch \
-	-Wimplicit-fallthrough -Wvla \
-	-g -fno-omit-frame-pointer \
-	-fsanitize=address,undefined
+	-Wimplicit-fallthrough -Wvla
+
+COMMON_CFLAGS := -std=c17 $(WARNFLAGS)
+
+DEBUG_CFLAGS := -g -fno-omit-frame-pointer -fsanitize=address,undefined
+
+RELEASE_CFLAGS := -O2 -DNDEBUG
 
 CPPFLAGS := -Iinclude
 COVFLAGS := -fprofile-instr-generate -fcoverage-mapping
@@ -18,14 +21,20 @@ SRC      := $(wildcard src/*.c)
 TEST_SRC := $(wildcard tests/*.c) $(wildcard tests/helpers/*.c)
 LIB_SRC  := $(filter-out src/main.c,$(SRC))
 
-.PHONY: test coverage coverage-show clean
+.PHONY: release test coverage coverage-show clean
 
 build/automata: $(SRC) | build
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(SRC) -o $@
+	$(CC) $(COMMON_CFLAGS)  $(DEBUG_CFLAGS) $(CPPFLAGS) $(SRC) -o $@
+
+build/automata-release: $(SRC) | build
+	$(CC) $(COMMON_CFLAGS) $(RELEASE_CFLAGS) $(CPPFLAGS) $(SRC) -o $@
+
+release: build/automata-release
 
 build/tests: $(LIB_SRC) $(TEST_SRC) | build
 	$(CC) \
-		$(CFLAGS) \
+		$(COMMON_CFLAGS) \
+		$(DEBUG_CFLAGS) \
 		$(CPPFLAGS) \
 		$(LIB_SRC) \
 		$(TEST_SRC) \
@@ -37,7 +46,8 @@ test: build/tests
 
 build/tests-cov: $(LIB_SRC) $(TEST_SRC) | build
 	$(CC) \
-		$(CFLAGS) \
+		$(COMMON_CFLAGS) \
+		$(DEBUG_CFLAGS) \
 		$(COVFLAGS) \
 		$(CPPFLAGS) \
 		$(LIB_SRC) \
