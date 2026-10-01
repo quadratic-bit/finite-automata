@@ -1,5 +1,7 @@
 #include <automata/ops.h>
 
+#include "dfa_product.h"
+
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -358,4 +360,36 @@ NfaResult nfa_star(Nfa *nfa, const Nfa *source) {
 	};
 
 	return NFA_OK;
+}
+
+static int accept_union(int left, int right) {
+	return left || right;
+}
+
+static int accept_intersection(int left, int right) {
+	return left && right;
+}
+
+static int accept_difference(int left, int right) {
+	return left && !right;
+}
+
+static int accept_xor(int left, int right) {
+	return left != right;
+}
+
+DfaResult dfa_union(Dfa *dfa, const Dfa *left, const Dfa *right) {
+	return dfa_product(dfa, left, right, accept_union);
+}
+
+DfaResult dfa_inter(Dfa *dfa, const Dfa *left, const Dfa *right) {
+	return dfa_product(dfa, left, right, accept_intersection);
+}
+
+DfaResult dfa_diff(Dfa *dfa, const Dfa *left, const Dfa *right) {
+	return dfa_product(dfa, left, right, accept_difference);
+}
+
+DfaResult dfa_sym_diff(Dfa *dfa, const Dfa *left, const Dfa *right) {
+	return dfa_product(dfa, left, right, accept_xor);
 }

@@ -92,6 +92,35 @@ static int automaton_minimize(Automaton *automaton) {
 	return 1;
 }
 
+typedef DfaResult (*DfaBinaryOperation)(
+	Dfa       *result,
+	const Dfa *left,
+	const Dfa *right
+);
+
+static int automaton_dfa_binary(Automaton *left, Automaton *right, const char *name,
+                                DfaBinaryOperation operation) {
+	if (left->kind != AUTOMATON_DFA || right->kind != AUTOMATON_DFA) {
+		fprintf(stderr, "operation '%s' requires two DFAs\n", name);
+		return 0;
+	}
+
+	Dfa result = {0};
+
+	if (operation(&result, &left->as.dfa, &right->as.dfa) != DFA_OK) {
+		fprintf(stderr, "operation '%s' failed\n", name);
+		return 0;
+	}
+
+	dfa_free(&left ->as.dfa);
+	dfa_free(&right->as.dfa);
+
+	left->kind   = AUTOMATON_DFA;
+	left->as.dfa = result;
+
+	return 1;
+}
+
 static int automaton_reverse(Automaton *automaton) {
 	Nfa reversed = {0};
 
@@ -158,25 +187,40 @@ static int automaton_to_nfa(Automaton *automaton) {
 }
 
 static int automaton_union(Automaton *left, Automaton *right) {
-	if (left->kind != AUTOMATON_NFA || right->kind != AUTOMATON_NFA) {
-		fprintf(stderr, "operation 'union' requires two NFAs\n");
-		return 0;
+	if (left->kind == AUTOMATON_NFA && right->kind == AUTOMATON_NFA) {
+		Nfa result = {0};
+
+		if (nfa_union(&result, &left->as.nfa, &right->as.nfa) != NFA_OK) {
+			fprintf(stderr, "operation 'union' failed\n");
+			return 0;
+		}
+
+		nfa_free(&left ->as.nfa);
+		nfa_free(&right->as.nfa);
+
+		left->as.nfa = result;
+		return 1;
 	}
 
-	Nfa result = {0};
-
-	if (nfa_union(&result, &left->as.nfa, &right->as.nfa) != NFA_OK) {
-		fprintf(stderr, "failed to construct NFA union\n");
-		return 0;
+	if (left->kind == AUTOMATON_DFA && right->kind == AUTOMATON_DFA) {
+		return automaton_dfa_binary(left, right, "union", dfa_union);
 	}
 
-	nfa_free(&left ->as.nfa);
-	nfa_free(&right->as.nfa);
+	fprintf(stderr, "operation 'union' requires operands of the same type\n");
 
-	left->kind   = AUTOMATON_NFA;
-	left->as.nfa = result;
+	return 0;
+}
 
-	return 1;
+static int automaton_intersection(Automaton *left, Automaton *right) {
+	return automaton_dfa_binary(left, right, "intersect", dfa_inter);
+}
+
+static int automaton_difference(Automaton *left, Automaton *right) {
+	return automaton_dfa_binary(left, right, "diff", dfa_diff);
+}
+
+static int automaton_xor(Automaton *left, Automaton *right) {
+	return automaton_dfa_binary(left, right, "xor", dfa_sym_diff);
 }
 
 static int automaton_concat(Automaton *left, Automaton *right) {
@@ -308,16 +352,34 @@ int main(int argc, char **argv) {
 		} else if (strcmp(operation, "star") == 0) {
 			if (!automaton_star(top)) goto fail;
 
-		} else if (strcmp(operation, "union") == 0) {
+		} else if (strcmp(operation, "union") == 0 ||
+		           strcmp(operation, "inter") == 0 ||
+			   strcmp(operation, "diff")  == 0 ||
+			   strcmp(operation, "xor")   == 0) {
 			if (stack_len < 2) {
-				fprintf(stderr, "operation 'union' requires two operands\n");
+				fprintf(stderr, "operation '%s' requires two operands\n",
+				        operation);
 				goto fail;
 			}
 
 			Automaton *left  = &stack[stack_len - 2];
 			Automaton *right = &stack[stack_len - 1];
 
-			if (!automaton_union(left, right)) goto fail;
+			int ok;
+
+			if (strcmp(operation, "union") == 0) {
+				ok = automaton_union(left, right);
+			} else if (strcmp(operation, "intersect") == 0) {
+				ok = automaton_intersection(left, right);
+			} else if (strcmp(operation, "diff") == 0) {
+				ok = automaton_difference(left, right);
+			} else {
+				ok = automaton_xor(left, right);
+			}
+
+			if (!ok) {
+				goto fail;
+			}
 
 			stack_len--;
 		} else if (strcmp(operation, "concat") == 0) {
