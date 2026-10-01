@@ -200,3 +200,162 @@ NfaResult nfa_union(Nfa *nfa, const Nfa *left, const Nfa *right) {
 
 	return NFA_OK;
 }
+
+NfaResult nfa_concat(Nfa *nfa, const Nfa *left, const Nfa *right) {
+	assert(nfa   != NULL);
+	assert(left  != NULL);
+	assert(right != NULL);
+
+	assert(nfa != left);
+	assert(nfa != right);
+
+	assert(left ->state_count > 0);
+	assert(right->state_count > 0);
+
+	if (left->state_count > SIZE_MAX - right->state_count) {
+		return NFA_ERR;
+	}
+
+	size_t state_count = left->state_count + right->state_count;
+
+	if (left->transition_count > SIZE_MAX - right->transition_count) {
+		return NFA_ERR;
+	}
+
+	size_t transition_count = left->transition_count + right->transition_count;
+	if (transition_count == SIZE_MAX) {
+		return NFA_ERR;
+	}
+
+	transition_count++;
+	if (transition_count > SIZE_MAX / sizeof(NfaTransition)) {
+		return NFA_ERR;
+	}
+
+	NfaTransition *transitions = malloc(transition_count * sizeof *transitions);
+	if (transitions == NULL) {
+		return NFA_ERR;
+	}
+
+	StateId right_offset = left->state_count;
+	size_t index = 0;
+
+	for (size_t i = 0; i < left->transition_count; ++i) {
+		const NfaTransition *old = &left->transitions[i];
+
+		assert(old->from < left->state_count);
+		assert(old->to   < left->state_count);
+
+		transitions[index++] = *old;
+	}
+
+	for (size_t i = 0; i < right->transition_count; ++i) {
+		const NfaTransition *old = &right->transitions[i];
+
+		assert(old->from < right->state_count);
+		assert(old->to   < right->state_count);
+
+		transitions[index++] = (NfaTransition){
+			.from   = old->from + right_offset,
+			.to     = old->to + right_offset,
+			.kind   = old->kind,
+			.symbol = old->symbol,
+		};
+	}
+
+	transitions[index++] = (NfaTransition){
+		.from = left->accept,
+		.to   = right->start + right_offset,
+		.kind = NFA_TRANSITION_EPSILON,
+	};
+
+	assert(index == transition_count);
+
+	*nfa = (Nfa){
+		.state_count      = state_count,
+		.start            = left->start,
+		.accept           = right->accept + right_offset,
+		.transitions      = transitions,
+		.transition_count = transition_count,
+	};
+
+	return NFA_OK;
+}
+
+NfaResult nfa_star(Nfa *nfa, const Nfa *source) {
+	assert(nfa    != NULL);
+	assert(source != NULL);
+	assert(nfa    != source);
+
+	assert(source->state_count > 0);
+
+	if (source->state_count > SIZE_MAX - 2) {
+		return NFA_ERR;
+	}
+
+	if (source->transition_count > SIZE_MAX - 4) {
+		return NFA_ERR;
+	}
+
+	size_t state_count      = source->state_count + 2;
+	size_t transition_count = source->transition_count + 4;
+
+	if (transition_count > SIZE_MAX / sizeof(NfaTransition)) {
+		return NFA_ERR;
+	}
+
+	NfaTransition *transitions = malloc(transition_count * sizeof *transitions);
+	if (transitions == NULL) {
+		return NFA_ERR;
+	}
+
+	size_t index = 0;
+
+	for (size_t i = 0; i < source->transition_count; ++i) {
+		const NfaTransition *old = &source->transitions[i];
+
+		assert(old->from < source->state_count);
+		assert(old->to   < source->state_count);
+
+		transitions[index++] = *old;
+	}
+
+	StateId start  = source->state_count;
+	StateId accept = start + 1;
+
+	transitions[index++] = (NfaTransition){
+		.from = start,
+		.to   = source->start,
+		.kind = NFA_TRANSITION_EPSILON,
+	};
+
+	transitions[index++] = (NfaTransition){
+		.from = start,
+		.to   = accept,
+		.kind = NFA_TRANSITION_EPSILON,
+	};
+
+	transitions[index++] = (NfaTransition){
+		.from = source->accept,
+		.to   = source->start,
+		.kind = NFA_TRANSITION_EPSILON,
+	};
+
+	transitions[index++] = (NfaTransition){
+		.from = source->accept,
+		.to   = accept,
+		.kind = NFA_TRANSITION_EPSILON,
+	};
+
+	assert(index == transition_count);
+
+	*nfa = (Nfa){
+		.state_count      = state_count,
+		.start            = start,
+		.accept           = accept,
+		.transitions      = transitions,
+		.transition_count = transition_count,
+	};
+
+	return NFA_OK;
+}

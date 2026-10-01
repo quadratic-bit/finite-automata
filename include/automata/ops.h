@@ -5,6 +5,8 @@
 #include <automata/nfa.h>
 
 NfaResult nfa_from_dfa(Nfa *nfa, const Dfa *dfa);
+NfaResult nfa_star    (Nfa *nfa, const Nfa *source);
 NfaResult nfa_union   (Nfa *nfa, const Nfa *left, const Nfa *right);
+NfaResult nfa_concat  (Nfa *nfa, const Nfa *left, const Nfa *right);
 
 #endif

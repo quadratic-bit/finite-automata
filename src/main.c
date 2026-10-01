@@ -179,6 +179,47 @@ static int automaton_union(Automaton *left, Automaton *right) {
 	return 1;
 }
 
+static int automaton_concat(Automaton *left, Automaton *right) {
+	if (left->kind != AUTOMATON_NFA || right->kind != AUTOMATON_NFA) {
+		fprintf(stderr, "operation 'concat' requires two NFAs\n");
+		return 0;
+	}
+
+	Nfa result = {0};
+
+	if (nfa_concat(&result, &left->as.nfa, &right->as.nfa) != NFA_OK) {
+		fprintf(stderr, "failed to concatenate NFAs\n");
+		return 0;
+	}
+
+	nfa_free(&left ->as.nfa);
+	nfa_free(&right->as.nfa);
+
+	left->kind   = AUTOMATON_NFA;
+	left->as.nfa = result;
+
+	return 1;
+}
+
+static int automaton_star(Automaton *automaton) {
+	if (automaton->kind != AUTOMATON_NFA) {
+		fprintf(stderr, "operation 'star' requires NFA, got DFA\n");
+		return 0;
+	}
+
+	Nfa result = {0};
+
+	if (nfa_star(&result, &automaton->as.nfa) != NFA_OK) {
+		fprintf(stderr, "failed to apply Kleene star\n");
+		return 0;
+	}
+
+	nfa_free(&automaton->as.nfa);
+	automaton->as.nfa = result;
+
+	return 1;
+}
+
 static int automaton_write_dot(const Automaton *automaton) {
 	switch (automaton->kind) {
 	case AUTOMATON_NFA:
@@ -264,6 +305,9 @@ int main(int argc, char **argv) {
 		} else if (strcmp(operation, "compl") == 0) {
 			if (!automaton_complement(top)) goto fail;
 
+		} else if (strcmp(operation, "star") == 0) {
+			if (!automaton_star(top)) goto fail;
+
 		} else if (strcmp(operation, "union") == 0) {
 			if (stack_len < 2) {
 				fprintf(stderr, "operation 'union' requires two operands\n");
@@ -274,6 +318,18 @@ int main(int argc, char **argv) {
 			Automaton *right = &stack[stack_len - 1];
 
 			if (!automaton_union(left, right)) goto fail;
+
+			stack_len--;
+		} else if (strcmp(operation, "concat") == 0) {
+			if (stack_len < 2) {
+				fprintf(stderr, "operation 'concat' requires two operands\n");
+				goto fail;
+			}
+
+			Automaton *left  = &stack[stack_len - 2];
+			Automaton *right = &stack[stack_len - 1];
+
+			if (!automaton_concat(left, right)) goto fail;
 
 			stack_len--;
 		} else {
