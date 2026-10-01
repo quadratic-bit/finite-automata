@@ -1,3 +1,4 @@
+#include <automata/ops.h>
 #include <automata/query.h>
 
 #include <assert.h>
@@ -238,4 +239,40 @@ QueryResult dfa_is_empty(const Dfa *dfa, int *empty) {
 	free(visited);
 
 	return QUERY_OK;
+}
+
+QueryResult dfa_equivalent(const Dfa *left, const Dfa *right, int *equivalent) {
+	assert(left       != NULL);
+	assert(right      != NULL);
+	assert(equivalent != NULL);
+
+	Dfa difference = {0};
+
+	if (dfa_sym_diff(&difference, left, right) != DFA_OK) {
+		return QUERY_ERR;
+	}
+
+	QueryResult result = dfa_is_empty(&difference, equivalent);
+
+	dfa_free(&difference);
+
+	return result;
+}
+
+QueryResult dfa_is_subset(const Dfa *left, const Dfa *right, int *subset) {
+	assert(left   != NULL);
+	assert(right  != NULL);
+	assert(subset != NULL);
+
+	Dfa difference = {0};
+
+	if (dfa_diff(&difference, left, right) != DFA_OK) {
+		return QUERY_ERR;
+	}
+
+	QueryResult result = dfa_is_empty(&difference, subset);
+
+	dfa_free(&difference);
+
+	return result;
 }

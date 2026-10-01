@@ -312,6 +312,24 @@ static int automaton_write_dot(const Automaton *automaton) {
 	return 0;
 }
 
+static int automaton_equivalent(const Automaton *left, const Automaton *right, int *equivalent) {
+	if (left->kind != AUTOMATON_DFA || right->kind != AUTOMATON_DFA) {
+		fprintf(stderr, "query 'equiv' requires two DFAs\n");
+		return 0;
+	}
+
+	return dfa_equivalent(&left->as.dfa, &right->as.dfa, equivalent) == QUERY_OK;
+}
+
+static int automaton_subset(const Automaton *left, const Automaton *right, int *subset) {
+	if (left->kind != AUTOMATON_DFA || right->kind != AUTOMATON_DFA) {
+		fprintf(stderr, "query 'subset' requires two DFAs\n");
+		return 0;
+	}
+
+	return dfa_is_subset(&left->as.dfa, &right->as.dfa, subset) == QUERY_OK;
+}
+
 int main(int argc, char **argv) {
 	if (argc < 3) {
 		fprintf(stderr, "usage: %s regex <expression> [det|min|rev|compl ...]\n", argv[0]);
@@ -384,6 +402,40 @@ int main(int argc, char **argv) {
 
 			return accepts ? 0 : EXIT_FALSE;
 		}
+
+		if (strcmp(operation, "equiv") == 0 || strcmp(operation, "subset") == 0) {
+			if (stack_len != 2) {
+				fprintf(stderr, "query '%s' requires exactly two automata\n",
+				        operation);
+				goto fail;
+			}
+
+			if (i + 1 != argc) {
+				fprintf(stderr, "query '%s' must be terminal\n", operation);
+				goto fail;
+			}
+
+			int value;
+
+			if (strcmp(operation, "equiv") == 0) {
+				if (!automaton_equivalent(&stack[0], &stack[1], &value)) {
+					goto fail;
+				}
+			} else {
+				if (!automaton_subset(&stack[0], &stack[1], &value)) {
+					goto fail;
+				}
+			}
+
+			printf("%s\n", value ? "true" : "false");
+
+			automaton_free(&stack[1]);
+			automaton_free(&stack[0]);
+			free(stack);
+
+			return value ? 0 : EXIT_FALSE;
+		}
+
 		if (strcmp(operation, "regex") == 0) {
 			if (i + 1 >= argc) {
 				fprintf(stderr, "regex requires an expression\n");
